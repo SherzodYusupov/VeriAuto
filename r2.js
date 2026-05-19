@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const client = new S3Client({
-  region: 'auto',
+  region: process.env.R2_REGION || 'auto',
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
     accessKeyId:     process.env.R2_ACCESS_KEY_ID,
