@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 const STRIPE_LINK = "https://buy.stripe.com/test_aFa9AT8E89I978x4tr2Fa00";
 
@@ -258,18 +258,61 @@ function Step2({ data, setData }) {
   );
 }
 
+function UploadTile({ item, file, onFile }) {
+  const inputRef = useRef(null);
+
+  const handleChange = useCallback((e) => {
+    const selected = e.target.files[0];
+    if (selected) onFile(item.key, selected);
+    e.target.value = "";
+  }, [item.key, onFile]);
+
+  const truncate = (name) => name.length > 18 ? name.slice(0, 15) + "…" : name;
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        style={{ display: "none" }}
+        onChange={handleChange}
+      />
+      <div onClick={() => inputRef.current.click()} style={{
+        border: `1.5px dashed ${file ? TEAL : BORDER}`,
+        borderRadius: 10, padding: "14px 12px",
+        background: file ? TEAL_LIGHT : "var(--color-background-secondary)",
+        cursor: "pointer", transition: "all 0.2s",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        gap: 8, textAlign: "center", minHeight: 90, justifyContent: "center",
+      }}>
+        {file
+          ? <i className="ti ti-check" style={{ fontSize: 22, color: TEAL }} />
+          : <i className={`ti ${item.icon}`} style={{ fontSize: 22, color: GRAY_TEXT }} />
+        }
+        <span style={{ fontSize: 12, color: file ? TEAL : GRAY_TEXT, fontWeight: file ? 500 : 400, lineHeight: 1.3 }}>
+          {file ? truncate(file.name) : item.label}
+        </span>
+        {file && (
+          <span style={{ fontSize: 10, color: GRAY_TEXT }}>tap to change</span>
+        )}
+      </div>
+    </>
+  );
+}
+
 function Step3({ uploads, setUploads }) {
   const done  = Object.values(uploads).filter(Boolean).length;
   const total = UPLOADS.length;
   const pct   = Math.round((done / total) * 100);
-  const toggle = (key) => setUploads(prev => ({ ...prev, [key]: !prev[key] }));
+  const onFile = useCallback((key, file) => setUploads(prev => ({ ...prev, [key]: file })), [setUploads]);
 
   return (
     <div>
       <div style={{ marginBottom: "1.5rem" }}>
         <h2 style={{ fontSize: 20, fontWeight: 500, color: DARK, margin: "0 0 6px" }}>Upload your documents</h2>
         <p style={{ fontSize: 14, color: GRAY_TEXT, margin: "0 0 1rem" }}>
-          Tap each tile to mark as uploaded. JPG or PDF, max 10 MB each.
+          Tap a tile to select a file. JPG, PNG or PDF, max 10 MB each.
         </p>
         <div style={{ background: "var(--color-background-secondary)", borderRadius: 8, height: 8, overflow: "hidden" }}>
           <div style={{
@@ -284,27 +327,9 @@ function Step3({ uploads, setUploads }) {
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-        {UPLOADS.map(item => {
-          const uploaded = uploads[item.key];
-          return (
-            <div key={item.key} onClick={() => toggle(item.key)} style={{
-              border: `1.5px dashed ${uploaded ? TEAL : BORDER}`,
-              borderRadius: 10, padding: "14px 12px",
-              background: uploaded ? TEAL_LIGHT : "var(--color-background-secondary)",
-              cursor: "pointer", transition: "all 0.2s",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 8, textAlign: "center", minHeight: 90, justifyContent: "center",
-            }}>
-              {uploaded
-                ? <i className="ti ti-check" style={{ fontSize: 22, color: TEAL }} />
-                : <i className={`ti ${item.icon}`} style={{ fontSize: 22, color: GRAY_TEXT }} />
-              }
-              <span style={{ fontSize: 12, color: uploaded ? TEAL : GRAY_TEXT, fontWeight: uploaded ? 500 : 400, lineHeight: 1.3 }}>
-                {item.label}
-              </span>
-            </div>
-          );
-        })}
+        {UPLOADS.map(item => (
+          <UploadTile key={item.key} item={item} file={uploads[item.key]} onFile={onFile} />
+        ))}
       </div>
       <div style={{
         marginTop: "1.25rem", background: TEAL_LIGHT, borderRadius: 10,
@@ -369,7 +394,7 @@ function Step4({ agreed, setAgreed }) {
   );
 }
 
-function Step5({ carData, sellerData }) {
+function Step5({ carData, sellerData, onPay, submitting, error }) {
   const car = `${carData.year || "—"} ${carData.make || "—"} ${carData.model || "—"}`;
   return (
     <div>
@@ -447,21 +472,26 @@ function Step5({ carData, sellerData }) {
         This is not a mechanical inspection. Refund issued if verification cannot be completed within 72 hours.
       </div>
 
-      <a href={STRIPE_LINK} style={{ textDecoration: "none" }}>
-        <button style={{
-          width: "100%", height: 52, borderRadius: 12, fontSize: 16,
-          fontWeight: 500, background: CORAL, color: "#fff",
-          border: "none", cursor: "pointer", display: "flex",
-          alignItems: "center", justifyContent: "center", gap: 10,
-          fontFamily: "var(--font-sans)", transition: "background 0.2s",
-        }}
-          onMouseEnter={e => e.currentTarget.style.background = "#993C1D"}
-          onMouseLeave={e => e.currentTarget.style.background = CORAL}
-        >
-          <i className="ti ti-lock" style={{ fontSize: 18 }} />
-          Proceed to payment — $99
-        </button>
-      </a>
+      {error && (
+        <div style={{
+          background: "#FCEBEB", border: "1px solid #F09595", borderRadius: 8,
+          padding: "0.75rem", marginBottom: "0.75rem", fontSize: 13, color: "#A32D2D",
+        }}>{error}</div>
+      )}
+
+      <button onClick={onPay} disabled={submitting} style={{
+        width: "100%", height: 52, borderRadius: 12, fontSize: 16,
+        fontWeight: 500, background: submitting ? "#D3D1C7" : CORAL, color: "#fff",
+        border: "none", cursor: submitting ? "not-allowed" : "pointer", display: "flex",
+        alignItems: "center", justifyContent: "center", gap: 10,
+        fontFamily: "var(--font-sans)", transition: "background 0.2s",
+      }}
+        onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#993C1D"; }}
+        onMouseLeave={e => { if (!submitting) e.currentTarget.style.background = CORAL; }}
+      >
+        <i className="ti ti-lock" style={{ fontSize: 18 }} />
+        {submitting ? "Uploading & submitting…" : "Proceed to payment — $99"}
+      </button>
       <p style={{ textAlign: "center", fontSize: 12, color: GRAY_TEXT, marginTop: 10 }}>
         Powered by Stripe · Secure payment
       </p>
@@ -470,11 +500,13 @@ function Step5({ carData, sellerData }) {
 }
 
 export default function Apply() {
-  const [step,    setStep   ] = useState(1);
-  const [seller,  setSeller ] = useState({ name: "", mobile: "", email: "", suburb: "" });
-  const [car,     setCar    ] = useState({ make: "", model: "", year: "", vin: "", rego: "", state: "", odo: "", price: "" });
-  const [uploads, setUploads] = useState(Object.fromEntries(UPLOADS.map(u => [u.key, false])));
-  const [agreed,  setAgreed ] = useState(Array(DECLS.length).fill(false));
+  const [step,       setStep      ] = useState(1);
+  const [seller,     setSeller    ] = useState({ name: "", mobile: "", email: "", suburb: "" });
+  const [car,        setCar       ] = useState({ make: "", model: "", year: "", vin: "", rego: "", state: "", odo: "", price: "" });
+  const [uploads,    setUploads   ] = useState(Object.fromEntries(UPLOADS.map(u => [u.key, null])));
+  const [agreed,     setAgreed    ] = useState(Array(DECLS.length).fill(false));
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
   const topRef = useRef(null);
 
   const scrollUp = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -485,6 +517,33 @@ export default function Apply() {
     if (step === 3) return Object.values(uploads).every(Boolean);
     if (step === 4) return agreed.every(Boolean);
     return true;
+  };
+
+  const handlePay = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      // 1. Create application record
+      const appRes = await fetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seller, car, declarations: agreed, uploads: Object.keys(uploads) }),
+      });
+      if (!appRes.ok) throw new Error((await appRes.json()).error || "Submission failed.");
+      const { id } = await appRes.json();
+
+      // 2. Upload files to R2 via backend
+      const formData = new FormData();
+      Object.entries(uploads).forEach(([key, file]) => formData.append("files", file, key));
+      const upRes = await fetch(`/api/applications/${id}/upload`, { method: "POST", body: formData });
+      if (!upRes.ok) throw new Error("File upload failed — please try again.");
+
+      // 3. Redirect to Stripe
+      window.location.href = STRIPE_LINK;
+    } catch (err) {
+      setSubmitError(err.message);
+      setSubmitting(false);
+    }
   };
 
   const next = () => { if (step < STEPS.length) { setStep(s => s + 1); scrollUp(); } };
@@ -515,7 +574,7 @@ export default function Apply() {
         {step === 2 && <Step2 data={car}    setData={setCar}    />}
         {step === 3 && <Step3 uploads={uploads} setUploads={setUploads} />}
         {step === 4 && <Step4 agreed={agreed}   setAgreed={setAgreed}  />}
-        {step === 5 && <Step5 carData={car} sellerData={seller} />}
+        {step === 5 && <Step5 carData={car} sellerData={seller} onPay={handlePay} submitting={submitting} error={submitError} />}
       </div>
 
       {step < 5 && (

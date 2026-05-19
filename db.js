@@ -37,9 +37,12 @@ db.run(`
     check_photos TEXT NOT NULL DEFAULT 'pending',
     overall_decision TEXT NOT NULL DEFAULT 'pending',
     issued_at TEXT, expires_at TEXT, verify_url TEXT, qr_code_data TEXT,
-    notes TEXT, car_sold INTEGER NOT NULL DEFAULT 0
+    notes TEXT, car_sold INTEGER NOT NULL DEFAULT 0,
+    upload_keys TEXT
   )
 `);
+
+try { db.run(`ALTER TABLE applications ADD COLUMN upload_keys TEXT`); } catch (_) { /* column exists */ }
 persist();
 
 function query(sql, params = []) {
@@ -71,7 +74,7 @@ export function getApplicationByCertId(certId) {
 }
 
 export function updateApplication(id, fields) {
-  const allowed = ['payment_confirmed','check_identity','check_ppsr','check_rego','check_odometer','check_photos','overall_decision','certificate_id','issued_at','expires_at','verify_url','qr_code_data','notes','car_sold'];
+  const allowed = ['payment_confirmed','check_identity','check_ppsr','check_rego','check_odometer','check_photos','overall_decision','certificate_id','issued_at','expires_at','verify_url','qr_code_data','notes','car_sold','upload_keys'];
   const keys = Object.keys(fields).filter(k => allowed.includes(k));
   if (!keys.length) return;
   run(`UPDATE applications SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ?`, [...keys.map(k => fields[k]), id]);

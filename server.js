@@ -2,38 +2,26 @@
 import 'dotenv/config';
 import express        from 'express';
 import cors           from 'cors';
-import { join, dirname } from 'path';
-import { fileURLToPath }  from 'url';
-import { mkdirSync }      from 'fs';
+import { dirname }       from 'path';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 }   from 'uuid';
 import QRCode             from 'qrcode';
 import multer             from 'multer';
 
 import { insertApplication, getAllApplications, getApplicationById, getApplicationByCertId, updateApplication, getExpiringApplications } from './db.js';
+import { uploadToR2 } from './r2.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT      = process.env.PORT || 4000;
 const BASE_URL  = process.env.BASE_URL || `http://localhost:3000`;
 
-// ── Upload storage ─────────────────────────────────────────────────────────────
-const uploadsDir = join(__dirname, 'uploads');
-mkdirSync(uploadsDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const appDir = join(uploadsDir, req.params.id || 'temp');
-    mkdirSync(appDir, { recursive: true });
-    cb(null, appDir);
-  },
-  filename: (req, file, cb) => cb(null, file.originalname),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10 MB
+// ── Upload storage (memory → R2) ──────────────────────────────────────────────
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ── App setup ─────────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(uploadsDir));
 
 // ── Helper: generate certificate ID ──────────────────────────────────────────
 function nextCertId() {
@@ -93,11 +81,29 @@ app.post('/api/applications', (req, res) => {
   }
 });
 
-// POST /api/applications/:id/upload — upload documents for an application
-app.post('/api/applications/:id/upload', upload.array('files'), (req, res) => {
+// POST /api/applications/:id/upload — upload documents to R2
+app.post('/api/applications/:id/upload', upload.array('files'), async (req, res) => {
   const app_ = getApplicationById(req.params.id);
   if (!app_) return res.status(404).json({ error: 'Application not found.' });
-  return res.json({ uploaded: req.files.map(f => f.originalname) });
+  if (!req.files?.length) return res.status(400).json({ error: 'No files received.' });
+
+  try {
+    const keys = await Promise.all(req.files.map(f => {
+      const key = `${req.params.id}/${f.fieldname || f.originalname}`;
+      return uploadToR2(key, f.buffer, f.mimetype);
+    }));
+
+    const existing = app_.upload_keys ? JSON.parse(app_.upload_keys) : [];
+    const merged   = { ...Object.fromEntries(existing.map(k => [k.split('/')[1], k])),
+                        ...Object.fromEntries(keys.map(k => [k.split('/')[1], k])) };
+    updateApplication(req.params.id, { upload_keys: JSON.stringify(Object.values(merged)) });
+
+    console.log(`📁 Uploaded ${keys.length} file(s) for ${req.params.id}:`, keys);
+    return res.json({ uploaded: keys });
+  } catch (err) {
+    console.error('R2 upload error:', err);
+    return res.status(500).json({ error: 'File upload failed.' });
+  }
 });
 
 // GET /api/applications — operator: list all applications
