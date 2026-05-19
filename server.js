@@ -20,7 +20,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 // ── App setup ─────────────────────────────────────────────────────────────────
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(',') : '*',
+}));
 app.use(express.json());
 
 // ── Helper: generate certificate ID ──────────────────────────────────────────

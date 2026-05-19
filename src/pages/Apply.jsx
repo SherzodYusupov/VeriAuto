@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 
 const STRIPE_LINK = "https://buy.stripe.com/test_aFa9AT8E89I978x4tr2Fa00";
+const API_BASE    = import.meta.env.VITE_API_URL || "";
 
 const CORAL       = "#D85A30";
 const CORAL_LIGHT = "#FAECE7";
@@ -524,7 +525,7 @@ export default function Apply() {
     setSubmitError(null);
     try {
       // 1. Create application record
-      const appRes = await fetch("/api/applications", {
+      const appRes = await fetch(`${API_BASE}/api/applications`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seller, car, declarations: agreed, uploads: Object.keys(uploads) }),
@@ -535,7 +536,7 @@ export default function Apply() {
       // 2. Upload files to R2 via backend
       const formData = new FormData();
       Object.entries(uploads).forEach(([key, file]) => formData.append("files", file, key));
-      const upRes = await fetch(`/api/applications/${id}/upload`, { method: "POST", body: formData });
+      const upRes = await fetch(`${API_BASE}/api/applications/${id}/upload`, { method: "POST", body: formData });
       if (!upRes.ok) throw new Error("File upload failed — please try again.");
 
       // 3. Redirect to Stripe
